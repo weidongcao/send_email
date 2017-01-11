@@ -1,0 +1,31 @@
+{
+  "mysql_database": {
+    "datacenter": {
+      "connect_type": "mysql",
+      "hostname": "54.223.85.243",
+      "username": "dc",
+      "password": "mCdlUmm3thna5ttup",
+      "database": "datacenter",
+      "charset": "uft8",
+      "hostport": 3306
+    },
+    "localhost": {
+      "connect_type": "mysql",
+      "hostname": "localhost",
+      "username": "root",
+      "password": "123123",
+      "database": "data_service",
+      "charset": "utf8",
+      "hostport": 3306
+    },
+    "email_service": {
+      "connect_type": "mysql",
+      "hostname": "54.223.85.243",
+      "username": "dc",
+      "password": "mCdlUmm3thna5ttup",
+      "database": "email_service",
+      "charset": "utf8",
+      "hostport": 3306
+    }
+  }
+}

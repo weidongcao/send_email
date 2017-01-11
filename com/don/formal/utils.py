@@ -14,7 +14,7 @@ def file_list(directory, suffix):
         if ((os.path.isfile(directory + '/' + file) is True) and (file.endswith(suffix) == True)):
             ## add file
             filelist.append(file)
-    return filelist;
+    return filelist
 
 
 ## replace ds date time

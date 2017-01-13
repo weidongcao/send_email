@@ -4,7 +4,6 @@
 import MySQLdb
 import time
 
-from constant_util import *
 from json_util import *
 from logger import logger
 
@@ -24,8 +23,8 @@ def get_database(conf_path, type_name, conn_name):
 
 # 获取Mysql数据库连接
 def get_connect():
-    # conn_info = get_database("D:\\bigdata\\workspace\\PycharmProjects\\python\\com\\don\\formal\\resource\\application_content.json", "mysql_database", "email_service")
-    conn_info = get_database("D:\\bigdata\\workspace\\PycharmProjects\\python\\com\\don\\formal\\resource\\application_content.json", "mysql_database", "localhost")
+    conn_info = get_database("D:\\bigdata\\workspace\\PycharmProjects\\python\\com\\don\\formal\\resource\\application_content.json", "mysql_database", "email_service")
+    # conn_info = get_database("D:\\bigdata\\workspace\\PycharmProjects\\python\\com\\don\\formal\\resource\\application_content.json", "mysql_database", "localhost")
 
     if conn_info:
         hostname = conn_info['hostname']
@@ -46,18 +45,6 @@ def get_connect():
         logger.debug("获取数据库连接信息失败")
         return False
 
-
-def get_error_job():
-    conn = get_connect()
-    cursor = conn.cursor()
-    cursor.execute(EMAIL_SELECT_ERROR_JOB)
-    rows = cursor.fetchall()
-
-    # 关闭游标
-    cursor.close()
-    # 断开连接
-    conn.close()
-    return rows
 
 def select_multi_data(sql):
     conn = get_connect()
@@ -127,7 +114,32 @@ def transform_temple_content(temple, data_list):
     if temple:
         if data_list:
             info_list = []
+            data_list = list(data_list)
             for data in data_list:
+                info = temple
+                for key in data:
+                    try:
+                        info = info.replace('{' + key + '}', str(data[key]))
+                    except Exception as e:
+                        logger.error(e.message)
+                        logger.error("convert error : key = " + key + "; value = " + str(data[key]))
+                        info_list = False
+                        break
+                info_list.append(info)
+        else:
+            logger.error("data_list is none")
+            info_list = False
+    else:
+        logger.error("temple is none")
+        info_list = False
+    return info_list
+
+#替换模板:将｛key｝替换为value
+def transform_format_string(temple, data_list):
+    if temple:
+        if data_list:
+            info_list = []
+            for data in list(data_list):
                 info = temple
                 for key in data:
                     try:
@@ -184,21 +196,6 @@ def call_proc(proc_name):
 
 
 if __name__ == '__main__':
-    # get_error_job()
-    # sql = EMAIL_SELECT_CONf_FOTMAT.replace('{conf_name}', 'error_report')
-    # sql = "select * from config_email_info where email_idd = 13"
-    # row = select_multi_data(sql)
-    #
-    # if row:
-    #     print(str(row[0]) + "\t\t" + str(row[1]) + str(row[2]) + "\t\t" + str(row[3]) + "\t\t" + str(row[4]))
-    # else:
-    #     print(row)
-
-    stli = ["ad"]
-    if stli:
-        print(True)
-    else:
-        print(False)
-    # call_proc("proc_main")
-    # curdate = time.strftime("%Y-%m-%d-%H-%M", time.localtime(time.time()))
-    # print(curdate)
+  string = "  aabbcc  "
+  print(string)
+  print(string.strip())

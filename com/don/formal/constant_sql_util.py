@@ -12,6 +12,7 @@ EMAIL_SELECT_RUNNING = """select
     email_content_convert,
     email_content_type,
     email_content_encode,
+    email_content_col,
     sender_email,
     sender_name,
     sender_passwd,

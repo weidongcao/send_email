@@ -53,6 +53,6 @@ def convert_to_json(str_list):
 if __name__ == '__main__':
     # poor = get_json("D:\\bigdata\\workspace\\PycharmProjects\\python\\com\\don\\formal\\resource\\application_content.json")
     # print(poor["mainbase"])
-    str = "aaa:AAA|bbb:BBB|ccc:CCC;ddd:DDD|eee:EEE|fff:FFF|ggg:GGG|hhh:HHH"
+    str = "job_name:job_daily|job_id:S10542451693250288|data_desc:taskname1, taskname2, taskname3,taskname4, taskname5, taskname6,taskname7, taskname8, taskname9|parameter:2017-01-10|insertdt:2017-01-10 20-20-19; job_name:job_daily|job_id:T32977120143340084|data_desc:taskname1, taskname2, taskname3,taskname4, taskname5, taskname6|parameter:2017-01-09|insertdt:2017-01-09 22-22-19; job_name:job_daily|job_id:T32977120143340084|data_desc:taskname1, taskname2, taskname3|parameter:2017-01-08|insertdt:2017-01-09 22-22-19;"
     json_str = convert_to_json(str)
     print(json_str)

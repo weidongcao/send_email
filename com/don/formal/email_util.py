@@ -42,7 +42,12 @@ val_list        要显示的数据,是一个双重list数组,形式如下:[[colv
 key_list和val_list内部数组的长度不一致的话以最长的为准,不够长的key_list的值以unknown colunm显示, val_list的值以error input显示
 """
 def transform_temple2(temple_path, key_list, val_list, theme):
-    content = open(temple_path)
+    try:
+        content = open(temple_path)
+    except Exception as e:
+        logger.error("temple path could not found, current tmeple path is " + temple_path)
+        logger.error(e.message)
+        return False
     lines = content.readlines()
     htmlcontent = ''
     for line in lines:

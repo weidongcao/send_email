@@ -28,8 +28,8 @@ def get_database(conf_path, type_name, conn_name):
 根据数据库连接信息获取Mysql数据库连接
 """
 def get_connect():
-    conn_info = get_database("resource/application_content.json", "mysql_database", "localhost")
-    # conn_info = get_database("resource/application_content.json", "mysql_database", "email_service")
+    conn_info = get_database("resource/application_context.json", "mysql_database", "control_job_dev")
+    # conn_info = get_database("resource/application_context.json", "mysql_database", "datacenter")
     # conn_info = get_database("D:\\bigdata\\workspace\\PycharmProjects\\python\\com\\don\\formal\\resource\\application_content.json", "mysql_database", "localhost")
 
     if conn_info:
@@ -40,7 +40,8 @@ def get_connect():
         database = conn_info['database']
         charset  = conn_info['charset']
         try:
-            conn = MySQLdb.connect(host=hostname, user=username, passwd=password, db=database, port=hostport, charset=charset)
+            # conn = MySQLdb.connect(host=hostname, user=username, passwd=password, db=database, port=hostport, charset=charset)
+            conn = MySQLdb.connect(host=hostname, user=username, passwd=password, db=database, port=hostport)
             logger.info("database connection success")
             return conn
         except Exception as e:
@@ -65,6 +66,7 @@ def select_multi_data(sql):
         logger.error(e.message)
         logger.error("select error, sql is " + sql)
         rows = False
+    logger.info("select multi-data success")
     # 关闭游标
     cursor.close()
     # 断开连接
@@ -86,8 +88,6 @@ def select_single_data(sql):
         logger.error("select error, sql is " + sql)
         row = False
 
-    # for row in rows:
-    #     print(str(row[0]) + "\t\t" + row[1] + row[2] + "\t\t" + str(row[3]) + "\t\t" + str(row[4]) + "\t\t" + str(row[5]))
     # 关闭游标
     cursor.close()
     # 断开连接
@@ -100,21 +100,22 @@ def select_single_data(sql):
 如果修改成功返回True,如果修改失败返回False
 """
 def batch_modify_database(sql_list):
+    #获取连接
+    conn = get_connect()
+    #获取连接游标
+    cursor = conn.cursor()
     if sql_list:
-        #获取连接
-        conn = get_connect()
-        #获取连接游标
-        cursor = conn.cursor()
         # 批量更新(插入)
-        for sql in sql_list:
+        for dbsql in sql_list:
             try:
-                cursor.execute(sql)
+                cursor.execute(dbsql)
                 # 提交事务
                 conn.commit()
                 flat = True
             except Exception as e:
                 logger.error(e.message)
-                logger.error("execute sql fail : sql = " + sql)
+                logger.error("execute sql fail : sql = " + dbsql)
+                conn.rollback()
                 flat = False
                 break
     else:
@@ -129,50 +130,26 @@ def batch_modify_database(sql_list):
 
 """
 替换模板:将｛key｝替换为value
-此方法主要是替换模板里的样板
-"""
-def transform_temple_content(temple, data_list):
-    if temple:
-        if data_list:
-            info_list = []
-            data_list = list(data_list)
-            for data in data_list:
-                info = temple
-                for key in data:
-                    try:
-                        info = info.replace('{' + key + '}', str(data[key]))
-                    except Exception as e:
-                        logger.error(e.message)
-                        logger.error("convert error : key = " + key + "; value = " + str(data[key]))
-                        info_list = False
-                        break
-                info_list.append(info)
-        else:
-            logger.error("data_list is none")
-            info_list = False
-    else:
-        logger.error("temple is none")
-        info_list = False
-    return info_list
-
-"""
-替换模板:将｛key｝替换为value
 此方法主要是替换constant_*_util.py里的常量
 """
 def transform_format_string(temple, data_list):
+    #判断模板是否为空
     if temple:
+        # 判断数据是否为空
         if data_list:
             info_list = []
+
+            # 对list里的数据进行循环替换
             for data in list(data_list):
                 info = temple
                 for key in data:
                     try:
+                        # 根据key替换成value
                         info = info.replace('{' + key + '}', str(data[key]))
                     except Exception as e:
                         logger.error(e.message)
                         logger.error("convert error : key = " + key + "; value = " + str(data[key]))
-                        info_list = False
-                        break
+                        return False
                 info_list.append(info)
         else:
             logger.error("data_list is none")
@@ -180,6 +157,9 @@ def transform_format_string(temple, data_list):
     else:
         logger.error("temple is none")
         info_list = False
+
+    if info_list:
+        logger.info("transform string format success")
     return info_list
 
 # 测试
@@ -222,5 +202,6 @@ def call_proc(proc_name):
 
 
 if __name__ == '__main__':
-  sqlscript = "select * from config_email_info limit 3"
-  test(sqlscript)
+  sql = "select *from result_target_log where job_id = 'T7795753989178458'"
+  test(sql)
+

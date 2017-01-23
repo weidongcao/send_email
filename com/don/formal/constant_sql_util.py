@@ -15,7 +15,6 @@ EMAIL_SELECT_RUNNING = """select
     email_content_col,
     sender_email,
     sender_name,
-    sender_passwd,
     email_server,
     server_port,
     receiver_list,
@@ -29,4 +28,7 @@ where
 
 EMAIL_UPDATE_RUNNING = """
 update running_email_info set run_status = {run_status}, update_date = NOW() where run_id = {run_id};
+"""
+EMAIL_SELECT_SENDER = """
+select sender_passwd from config_sender_info sender LEFT JOIN config_email_conf conf on sender.sender_id = conf.sender_id where conf.conf_id = {conf_id};
 """

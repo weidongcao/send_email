@@ -48,23 +48,26 @@ def get_running_list(select_sql):
         info_dict["sender_email"] = info_list[11]
         # 发件人名称
         info_dict["sender_name"] = info_list[12]
-        # 发件人密码
-        info_dict["sender_passwd"] = info_list[13]
+
         # 发件邮箱服务器
-        info_dict["email_server"] = info_list[14]
+        info_dict["email_server"] = info_list[13]
         # 发件邮箱服务器端口
-        info_dict["server_port"] = info_list[15]
+        info_dict["server_port"] = info_list[14]
         # 收件人列表
-        info_dict["receiver_list"] = info_list[16]
+        info_dict["receiver_list"] = info_list[15]
         # 任务状态
-        info_dict["run_status"] = info_list[17]
+        info_dict["run_status"] = info_list[16]
         # 生成时间
-        info_dict["create_date"] = info_list[18]
+        info_dict["create_date"] = info_list[17]
         # 更新时间
-        info_dict["update_date"] = info_list[19]
+        info_dict["update_date"] = info_list[18]
 
         # 将邮件内容的字段名和值相对应
         info_dict["email_content_convert"] = transform_kv_content(info_dict["email_content_col"], info_dict["email_content"])
+
+        # 发件人密码
+        sql_email_select_sener = transform_format_string(EMAIL_SELECT_SENDER, [{'conf_id': info_dict["conf_id"]}])[0]
+        info_dict["sender_passwd"] = select_single_data(sql_email_select_sener)[0]
         running_list.append(info_dict)
     return running_list
 
@@ -111,23 +114,27 @@ def send_email():
                 # html_content = transform_temple(temple_path, list_data, msg_dict["email_theme"])
                 html_content = transform_temple2(temple_path, list_key, list_data, msg_dict["email_theme"])
 
-                # 将邮件内容写入字典
-                msg_dict["html_content"] = html_content
+                # 如果模板转换失败跳过此job运行下一个
+                if html_content:
+                    # 将邮件内容写入字典
+                    msg_dict["html_content"] = html_content
 
-                # 发送邮件
-                send_result = email_service(msg_dict)
-                # send_result = True
-                # 发送邮件的结果
-                if send_result:
-                    msg_dict["run_status"] = 1
+                    # 发送邮件
+                    send_result = email_service(msg_dict)
+                    # send_result = True
+                    # 发送邮件的结果
+                    if send_result:
+                        msg_dict["run_status"] = 1
 
+                    else:
+                        msg_dict["run_status"] = -1
+
+                    # 生成任务表更新sql语句
+                    email_update_running_sql = transform_format_string(EMAIL_UPDATE_RUNNING, [msg_dict])
+                    #将发邮件的结果更新到数据库
+                    batch_modify_database(email_update_running_sql)
                 else:
-                    msg_dict["run_status"] = -1
-
-                # 生成任务表更新sql语句
-                email_update_running_sql = transform_format_string(EMAIL_UPDATE_RUNNING, [msg_dict])
-                #将发邮件的结果更新到数据库
-                batch_modify_database(email_update_running_sql)
+                    continue
             else:
                 logger.error("eamil content string is not formatted style")
     else:
@@ -148,6 +155,7 @@ def main():
     flat = True
     while flat:
         send_email()
+        flat = False
 
 
 if __name__ == "__main__":

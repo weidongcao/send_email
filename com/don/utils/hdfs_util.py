@@ -7,6 +7,8 @@ import sys
 import gzip
 import subprocess
 import re
+
+from logger import logger
 reload(sys)
 sys.setdefaultencoding("utf-8")
 
@@ -46,12 +48,12 @@ def get_unzip_hdfs_file(hdfs_file_url, save_dir):
 
     # 生成下载hdfs文件的命令
     hadoop_get = 'hadoop fs -get %s %s' % (hdfs_file_url, save_file)
-
+    logger.info("download hdfs file cammond: " + hadoop_get)
     # shell执行生成的hdfs命令
     try:
         os.system(hadoop_get)
     except Exception as e:
-        print(e)
+        logger.error(e)
         return False
 
     # 判断下载的hdfs文件是否为压缩文件
@@ -70,30 +72,40 @@ def get_unzip_hdfs_file(hdfs_file_url, save_dir):
 
             return f_name
         except Exception as e:
-            print(e)
+            logger.error(e)
             return False
     else:
         return save_file
 
+
+"""
+根据HDFS文件目录下载此目录下所有的文件
+参数说明:
+hdfs_dir:HDFS文件目录
+save_dir:要保存的目录
+
+返回结果说明:执行成功返回True,执行失败返回False
+"""
+
+
 def get_unzip_hdfs_file_from_dir(hdfs_dir, save_dir):
-    #命令:获取hdfs目录下的文件
+    # 命令:获取hdfs目录下的文件
     hadoop_ls = "hadoop fs -ls %s | grep -i '^-'" % hdfs_dir
 
+    # 解压后的文件列表
+    save_file_list = []
     # 执行shell命令
     hdfs_result = exec_sh(hadoop_ls, None)
 
     # 获取命令执行输出
-    # hdfs_stdout = hdfs_result["stdout"]
-    hdfs_stdout = """-rw-r--r--   2 caoweidong supergroup      42815 2017-01-23 14:20 /user/000000_0.gz
--rw-r--r--   2 caoweidong supergroup      42815 2017-01-23 17:01 /user/20170123162822.gz
--rw-r--r--   2 caoweidong supergroup      42815 2017-01-23 17:01 /user/201701231701.gz"""
+    hdfs_stdout = hdfs_result["stdout"]
+    # print("hdfs_stdout = " + hdfs_stdout)
 
     # 要下载的HDFS文件列表
     hdfs_list = []
 
     # 判断是否有输出
     if hdfs_stdout:
-
         # 以行分割, 一行是一个文件的信息
         hdfs_lines = hdfs_stdout.split("\n")
 
@@ -104,7 +116,7 @@ def get_unzip_hdfs_file_from_dir(hdfs_dir, save_dir):
             line_list = re.split("\s+", line)
 
             # -rw-r--r--   2 caoweidong supergroup      42815 2017-01-23 14:20 /user/000000_0.gz
-            if line_list.__len__():
+            if line_list.__len__() == 8:
                 # print("line_list[7] = " + line_list[7])
 
                 # HDFS文件加入下载列表
@@ -113,8 +125,9 @@ def get_unzip_hdfs_file_from_dir(hdfs_dir, save_dir):
                 pass
         # 下载文件
         for file in hdfs_list:
-            get_unzip_hdfs_file(file, save_dir)
-        return True
+            save_filename = get_unzip_hdfs_file(file, save_dir)
+            save_file_list.append(save_filename)
+        return save_file_list
     else:
         return False
 
@@ -131,6 +144,8 @@ stdout:命令的输出
 stderr:命令的错误输出
 returncode:命令执行返回值,0 -->执行成功 大于0执行失败, None-->还没有执行完
 """
+
+
 def exec_sh(commandfull, cwdpath):
     try:
         result_cmd = subprocess.Popen(commandfull, cwd=cwdpath, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -159,12 +174,12 @@ def exec_sh(commandfull, cwdpath):
         print(e.message)
         return False
 
+
 if __name__ == "__main__":
-    # download_hdfs_file("/user/000000_0.gz", "/home/caoweidong/data/unzipDirectory")
-    # result = get_unzip_hdfs_file("/user/000000_0.gz", "/home/caoweidong/data/")
-    # print("get_unzip_hdfs_file = " + result)
-    # un_gz("/home/caoweidong/data/000000_0.gz")
-    # get_unzip_hdfs_file_from_dir(None, None)
-    aaa = "-rw-r--r--   2 caoweidong supergroup      42815 2017-01-23 14:20 /user/000000_0.gz"
-    alist = re.split("\s+", aaa)
-    print(alist)
+    # 接收命令行传过来的参数
+    args_list = sys.argv
+
+    get_unzip_hdfs_file_from_dir(args_list[1], args_list[2])
+    # get_unzip_hdfs_file_from_dir("/user", "/home/caoweidong/data/")
+
+

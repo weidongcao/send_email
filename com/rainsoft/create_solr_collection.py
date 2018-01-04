@@ -1,5 +1,6 @@
 #!/usr/bin/python
-# coding=utf-8
+# -*- coding: utf-8 -*-
+
 import calendar
 import datetime
 import json
@@ -7,25 +8,28 @@ import os
 import subprocess
 import sys
 import urllib2
-
-reload(sys)
-sys.setdefaultencoding('utf-8')
+import logging.handlers
+import logging
 
 # 脚本使用说明
-# 初次使用需要根据集群情况修改以下参数
+# 程序的入口在脚本的最下面(__main__)
+# 程序执行之前需要先初始化参数
+# 初次使用需要根据集群情况给程序传参，参数如下：
 # host_name: 可以是Solr集群中的任意一台服务器的主机名或者IP地址
 # solr_port: 此服务器Solr的端口号
-# numShards: Solr集群节点数
+# numShards: Solr集群节点数（Solr部署了多少台服务器就是多少）
 # replicationFactor: 副本数，数据量不大可以指定副本数为1，数据量大的话指定为2
 
 # 创建Collection的规则
 # 脚本的功能为Solr每个月10天创建一个Collection
 # Collection的命令格式为"yisou年月(天除了10)"
 # 例如
-# 2017年12月03日在2017年12月的第1个10天，此Collection命名为yisou20171201
-# 2017年12月13日在2017年12月的第2个10天，此Collection命名为yisou20171202
-# 2017年12月23日在2017年12月的第3个10天，此Collection命名为yisou20171203
+# 2017年12月03日在2017年12月的第1个10天，此Collection命名为yisou20171200
+# 2017年12月13日在2017年12月的第2个10天，此Collection命名为yisou20171201
+# 2017年12月23日在2017年12月的第3个10天，此Collection命名为yisou20171202
 # 2017年12月30日31日，就两天，也把它算到第3个10天，命令为yisou20171203
+
+# 指定时间段的Collection创建完成后会再创建一个虚拟的Collection（yisou）:这个Collection指向所有的Collection
 
 # 执行定时任务
 # 定时执行此任务每天的凌晨3点执行一次
@@ -35,6 +39,47 @@ sys.setdefaultencoding('utf-8')
 # @reboot python create_solr_collection.py
 
 # 全局变量
+# 如果需要修改全局变量的值的话，不要在这里改，下面有程序初始化方法，
+# 在程序的__main__方法里给init方法传参来修改全局变量的值
+
+reload(sys)
+# 指定文件的编码格式为UTF-8
+sys.setdefaultencoding('utf-8')
+
+# 获取日志对象并指定名称
+logger = logging.getLogger(__name__)
+# 指定日志打印格式
+formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+# 指定日志时间戳打印格式
+formatter.datefmt = '%Y-%m-%d %H:%M:%S'
+
+# 日志文件路径
+log_file = '{root_dir}{path_separator}logs{path_separator}create_solr_collection.log'.format(
+    root_dir=os.getcwd(),
+    path_separator=os.sep
+)
+
+# 判断日志所在目录是否存在, 如果不存在的话创建日志所在目录
+if os.path.exists(os.path.dirname(log_file)) is False:
+    os.makedirs(os.path.dirname(log_file))
+
+# 文件日志
+file_handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=256 * 1024 * 1024, backupCount=10)
+# 指定输出到文件的日志的格式
+file_handler.setFormatter(formatter)
+
+# 控制台日志
+console_handler = logging.StreamHandler(sys.stdout)
+# 指定输出到拆台的日志格式
+console_handler.setFormatter(formatter)
+
+# 删除所有的handler
+logging.getLogger().handlers = []
+# 为logger添加的日志处理器
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+logger.setLevel(logging.INFO)
+
 # Solr所在的服务器主机名或IP
 host_name = "http://cm02.spark.com"
 # Solr的端口号
@@ -49,23 +94,31 @@ maxShardsPerNode = 1
 project_identify = "yisou"
 
 # 获取Solr所有Collection的HTTP请求模板
-get_all_collection_url_template = """ ${host_name}:${solr_port}/solr/admin/collections?action=LIST&wt=json """
+get_all_collection_url_template = """ {host_name}:{solr_port}/solr/admin/collections?action=LIST&wt=json """
 # 生成Solr Collection的HTTP请求模板
-create_collection_url_template = """${host_name}:${solr_port}/solr/admin/collections?action=CREATE&name=${\
-collection_name}&numShards=${numShards}&replicationFactor=${replicationFactor}&maxShardsPerNode=${\
-maxShardsPerNode}&collection.configName=${collection_conf}&wt=json """
+create_collection_url_template = """{host_name}:{solr_port}/solr/admin/collections?action=CREATE&name={\
+collection_name}&numShards={numShards}&replicationFactor={replicationFactor}&maxShardsPerNode={\
+maxShardsPerNode}&collection.configName={collection_conf}&wt=json """
 
 # 为所有Collection创建别名的模板
-create_alias_url_template = """${host_name}:${solr_port}/solr/admin/collections?action=CREATEALIAS&name=collection\
-&collections=${all_collection}&wt=json """
+create_alias_url_template = """{host_name}:{solr_port}/solr/admin/collections?action=CREATEALIAS&name=\
+{collection_name}&collections={all_collection}&wt=json """
 
+# 删除Solr里Collection的别名
+delete_alias_url_template = """ {host_name}:{solr_port}/solr/admin/collections?action=\
+DELETEALIAS&name={alias_name} """
 # 测试，创建Collection成功的返回结果
 data_create_collection_success = """
-{"responseHeader":{"status":0,"QTime":6400},"success":{"cm02.spark.com:8080_solr":{"responseHeader":{"status":0,"QTime":1722},"core":"yisou20171101_shard2_replica1"},"cm03.spark.com:8080_solr":{"responseHeader":{"status":0,"QTime":1734},"core":"yisou20171101_shard3_replica1"},"cm01.spark.com:8080_solr":{"responseHeader":{"status":0,"QTime":1725},"core":"yisou20171101_shard1_replica1"}}}
+{"responseHeader":{"status":0,"QTime":6400},"success":\
+{"cm02.spark.com:8080_solr":{"responseHeader":{"status":0,"QTime":1722},\
+"core":"yisou20171101_shard2_replica1"},"cm03.spark.com:8080_solr":\
+{"responseHeader":{"status":0,"QTime":1734},"core":"yisou20171101_shard3_replica1"}\
+,"cm01.spark.com:8080_solr":{"responseHeader":{"status":0,"QTime":1725},\
+"core":"yisou20171101_shard1_replica1"}}}
 """
 
 delete_collection_url_template = """
-${host_name}:${solr_port}/solr/admin/collections?action=DELETE&name=${collection}&wt=json
+{host_name}:{solr_port}/solr/admin/collections?action=DELETE&name={collection}&wt=json
 """
 
 
@@ -77,6 +130,9 @@ def exec_cmd(full_command, cwd_path):
     第一个参数(full_command)：完整的shell命令
     第二个参数(pwd_path)：执行此命令所在的根目录
 
+    :param full_command: 要执行的Shell命令
+    :param cwd_path: 指定执行Shell命令时所在的根目录
+    :return: Shell命令执行结果
     返回结果：
         stdout:执行Shell命令的输出
         stderr:执行Shell命令的错误信息
@@ -88,10 +144,10 @@ def exec_cmd(full_command, cwd_path):
                                    stderr=subprocess.PIPE, shell=True)
 
         while True:
-            format_print(process.stdout.readline(), )
+            logger.info(process.stdout.readline(), )
             if process.poll() is not None:
                 break
-        print("")
+        logger("")
         # 等命令行运行完
         process.wait()
 
@@ -104,44 +160,47 @@ def exec_cmd(full_command, cwd_path):
 
         # 获取shell 命令返回值,如果正常执行会返回0, 执行异常返回其他值
         return_code = process.returncode
-        # print("return_code = " + str(return_code))
+        # logger.info("return_code = " + str(return_code))
 
         # 获取命令运行进程号
         pid = process.pid
 
         result_dict = {"stdout": stdout, "stderr": stderr, "return_code": return_code, "pid": pid}
         return result_dict
-    except Exception as e:
-        print(e.message)
-        print("程序执行失败,程序即将退出")
+    except Exception, e:
+        logger.error("执行失败", exc_info=True)
+        os._exit(0)
+
+        return False
+
+
+def exec_http_request(url):
+    """
+    发起HTTP请求
+    :param url:  向Solr发起的HTTP请求
+    :return: HTTP请求返回的Response
+    """
+    req = urllib2.Request(url)
+    try:
+        response = urllib2.urlopen(req).read()
+        ss = response.encode('utf-8')
+        return json.loads(ss)
+    except Exception, e:
+        logger.error('执行curl失败：%s', url.__str__())
+        logger.error('执行curl失败', exc_info=True)
         os._exit(0)
         return False
 
 
-# 发起HTTP请求
-def exec_http_request(url):
-    req = urllib2.Request(url)
-    response = urllib2.urlopen(req).read()
-    ss = response.encode('utf-8')
-
-    return json.loads(ss)
-
-
-# 格式化打印
-def format_print(content):
-    prefix_info = "[" + datetime.datetime.strftime(datetime.datetime.now(), "%Y-%m-%d %H:%M:%S") + " INFO] "
-
-    print(prefix_info + content)
-
-
-# 获取要在Linux命令行执行的curl命令
-def get_solr_url_cmd(url):
-    return "curl " + url
-
-
-# 由当前日期根据指定规则生成Collection名称,如:yisou20171200,表示项目类型为yisou,
-# 这个Collection里存储的是2017年12月1日到2017年12月10日的数据
 def get_collection_name_by_date(key, cur_date):
+    """
+    由当前日期根据指定规则生成Collection名称,如:yisou20171200,表示项目类型为yisou,
+    这个Collection里存储的是2017年12月1日到2017年12月10日的数据
+
+    :param key: Solr Collection前缀, 一般为项目标识
+    :param cur_date: 当前时间格式为2018-01-01
+    :return: Solr Collection 名称
+    """
     # 获取年份
     cur_year = cur_date.strftime("%Y")
     # 获取月份
@@ -160,13 +219,18 @@ def get_collection_name_by_date(key, cur_date):
 
     # Collection的名称由项目标识+年+月+时间段标识
     collection_name = key + cur_year + cur_month + identify
-    format_print("日期: " + cur_date.strftime("%Y-%m-%d") + " 此时间段的Collection: " + collection_name)
+    logger.info("日期: %s 所在的Collection: %s", cur_date.strftime("%Y-%m-%d"), collection_name)
 
     return collection_name
 
 
-# 根据当前Collection的名称获取到前一Collection的名称(yisou20171200)
-def get_previous_collection_name(collection_name):
+def get_previous_collection_name_by_name(collection_name):
+    """
+    根据当前Collection的名称获取到前一Collection的名称(yisou20171200)
+
+    :param collection_name: Solr Collection名称
+    :return:  根据规则前一个Solr Collection名称
+    """
     # 获取日期标识
     identify = collection_name[-2::1]
     # 获取月份
@@ -193,16 +257,21 @@ def get_previous_collection_name(collection_name):
     if len(cur_month.__str__()) == 1:
         cur_month = "0" + str(cur_month)
 
-    # 生成前一个一个Collection的名称
+    # 生成前一个Collection的名称
     previous_collection_name = collection_name[:-8:1] + cur_year + cur_month + str(identify)
 
-    format_print("生成的前一Collection名称： " + previous_collection_name)
+    logger.info("生成的前一Collection名称: %s", previous_collection_name)
 
     return previous_collection_name
 
 
-# 根据当前日期获取Collection要保存的数据的时间段
 def get_period_by_date(cur_date):
+    """
+    根据当前日期获取Collection要保存的数据的时间段
+
+    :param cur_date: 当时日期，格式为2018-01-01
+    :return: 时间段[开始日期, 结束日期]
+    """
     # 获取到日期的日(一个月的第几天)
     cur_day = cur_date.day
 
@@ -229,11 +298,18 @@ def get_period_by_date(cur_date):
     # Collection的结束时间
     end_date_str = datetime.datetime.strftime(end_date, "%Y-%m-%d")
 
+    logger.info("当时的日期为: %s ,所在的时间段为：%s 到 %s", cur_date, start_date_str, end_date_str)
+
     return [start_date_str, end_date_str]
 
 
-# 根据Collection名称获取它所存储的数据的时间段
 def get_period_by_collection_name(collection_name):
+    """
+    根据Collection名称获取它所存储的数据的时间段
+
+    :param collection_name: Solr Collection 名称
+    :return: [开始日期, 结束日期]
+    """
     # 获取Collection名称的时间标识
     date_identify = collection_name[-8::1]
 
@@ -244,12 +320,23 @@ def get_period_by_collection_name(collection_name):
     date_identify = str(int(date_identify) + 5 + (identify * 10))
     # 字符串转为日期
     date_period = datetime.datetime.strptime(date_identify, "%Y%m%d")
+    start_end_period = get_period_by_date(date_period)
+
+    logger.info(
+        "%s 的Solr Collection存储的数据所在的时间段为: %s 到 %s",
+        collection_name, start_end_period[0], start_end_period[1]
+    )
 
     return get_period_by_date(date_period)
 
 
-# 根据日期获取所在月的最后一天
 def get_last_day_of_month(cur_date):
+    """
+    根据日期获取所在月的最后一天
+    :param cur_date: 日期,格式为2018-01-01
+    :return: 指定日期所在月的最后一天
+    """
+
     cur_year = cur_date.year
     cur_month = cur_date.month
     cur_day = cur_date.day
@@ -261,8 +348,12 @@ def get_last_day_of_month(cur_date):
     return cur_date + datetime.timedelta(days=(days - cur_day))
 
 
-# 根据Collection名称获取到下一个一个Collection的名称
 def get_forward_collection_name(collection_name):
+    """
+    根据Collection名称获取到下一个Collection的名称
+    :param collection_name: Solr Collection名称
+    :return: 下一个Solr Collection名称
+    """
     # 获取日标识
     identify = collection_name[-2::1]
     # 获取月份
@@ -293,19 +384,47 @@ def get_forward_collection_name(collection_name):
 
     # 生成下一个一个Collection的名称
     forward_collection_name = collection_name[:-8:1] + cur_year + cur_month + identify
-    format_print("Collection名称: " + collection_name + " 生成的下时间段的Collection名称: " + forward_collection_name)
+    logger.info("Collection名称: %s 生成的下时间段的Collection名称为: %s ", collection_name, forward_collection_name)
 
     return forward_collection_name
 
 
-# 获取Solr所有Collection
+def get_earliest_collection_name(collections):
+    """
+    根据Solr Collection列表获最早的Collection
+    :param collections: Solr Collection列表
+    :return: Collection列表中最早的Collection
+    """
+    # 要返回的最早的Solr Collection
+    earliest_collection = None
+
+    # 如果Solr Collection列表为空，或者列表内没有元素，直接返回
+    if (collections is None) or (collections.__length__() == 0):
+        return None
+
+    # 获取Collection中最早的Collection
+    for collection in collections:
+        if earliest_collection is None:
+            earliest_collection = collection
+        else:
+            earliest_date_identify = earliest_collection[-8::1]
+            date_identify = collection[-8::1]
+            if int(date_identify) < int(earliest_date_identify):
+                earliest_collection = collection
+
+    return earliest_collection
+
+
 def get_all_collection():
-    get_all_collection_url = get_all_collection_url_template.replace("${host_name}", host_name)
-    get_all_collection_url = get_all_collection_url.replace("${solr_port}", solr_port.__str__())
+    """
+    获取Solr所有Collection
+    :return: Solr Collection列表
+    """
+    get_all_collection_url = get_all_collection_url_template.format(host_name=host_name, solr_port=solr_port.__str__())
 
-    format_print("获取Solr所有的Collection ...")
+    logger.info("正在获取Solr所有的Collection ...")
 
-    # 去SOlr集群查询
+    # 去Solr集群查询
     response = exec_http_request(get_all_collection_url)
     collections = response["collections"]
 
@@ -313,24 +432,107 @@ def get_all_collection():
     col_utf8 = []
     for col in collections:
         col_utf8.append(col.encode("utf-8"))
-    format_print("获取成功, Solr已创建的所有Collection: " + col_utf8.__str__())
+    logger.info("获取成功, Solr已创建的所有Collection为: %s", col_utf8.__str__())
 
     return col_utf8
 
 
-# 创建前一个Collection
-# 递归创建前一个一个Collection，如果前一个一个Collection没有创建的话，后面所有的Collection都不能创建
-# 这样所有的Collection就都创建了
+def get_collection_start_date(collection_name):
+    """
+    Solr Collection 是按时间段划分的
+    根据Solr Collection的名称获取它存储的数据的时间段的开始日期,格式为：yyyy-mm-dd
+    :param collection_name: Solr Collection名称
+    :return: 开始日期
+    """
+    # 获取Collection名称的时间标识
+    date_identify = collection_name[-8::1]
+
+    # 获取日标识
+    identify = int(collection_name[-1::1])
+
+    # 获取该时间段内的任意一天
+    date_identify = str(int(date_identify) + 1 + (identify * 10))
+    # 字符串转为日期
+    start_date = datetime.datetime.strptime(date_identify, "%Y%m%d")
+
+    return start_date
+
+
+def get_collection_end_date(collection_name):
+    """
+    Solr Collection 是按时间段划分的
+    根据Solr Collection的名称获取它存储的数据的时间段的结束日期,格式为：yyyy-mm-dd
+    :param collection_name: Solr Collection名称
+    :return: 结束日期
+    """
+    # 先获取到此Solr Collection时间段的第一天
+    start_date = get_collection_start_date(collection_name)
+    # 获取日标识
+    identify = int(collection_name[-1::1])
+    if identify == 2:
+        return get_last_day_of_month(start_date)
+    else:
+        return start_date + datetime.timedelta(days=(10 - 1))
+
+
+def get_collections_by_start_end_date(start_date_str, end_date_str):
+    """
+    Solr Collection是按时间段划分的,
+    根据开始日期和结束日期获取它们之间的Solr Collection
+    如果Solr Collection包含的时间段不完整的话剔除
+    :param start_date: 开始日期
+    :param end_date: 结束日期
+    :return: Solr Collection列表
+    """
+    # 开始和结束日期之间的Solr Collection列表
+    collections = []
+    # 开始日期所在的Solr Collection名称
+    start_date = datetime.datetime.strptime(start_date_str, "%Y-%m-%d")
+    start_collection_name = get_collection_name_by_date(project_identify, start_date)
+    # 结束日期所在的Solr Collection名称
+    end_date = datetime.datetime.strptime(end_date_str, "%Y-%m-%d")
+    end_collection_name = get_collection_name_by_date(project_identify, end_date)
+
+    # 如果开始日期与Collection的开始日期一致,将开始日期所在的Collection添加到列表
+    if start_date == get_collection_start_date(start_collection_name):
+        collections.append(start_collection_name)
+
+    # 从开始的Collection向后获取Collection,一直到结束的Collection
+    while True:
+        forward_collection_name = get_forward_collection_name(start_collection_name)
+        # 如果是最后一个Collection,跳循环
+        if forward_collection_name == end_collection_name:
+            break
+        else:
+            # 否则的话将Collection添加到列表
+            collections.append(forward_collection_name)
+            start_collection_name = forward_collection_name
+
+    # 如果结束日期与Collection的结束日期一致,将结束日期所在的Collection添加到列表
+    if end_date == get_collection_end_date(end_collection_name):
+        collections.append(end_collection_name)
+
+    return collections
+
+
 def create_previous_collection(collections, cur_collection_name):
+    """
+    创建前一个Collection
+    递归创建前一个Collection，如果前一个Collection没有创建的话，后面所有的Collection都不能创建
+    这样所有的Collection就都创建了
+    :param collections: Solr Collection列表
+    :param cur_collection_name: 当前Solr Collection名称
+    :return:是否创建成功
+    """
     # 判断当前Collection是否已经创建
     if cur_collection_name not in collections:
         # 获取前一个Collection的名称
-        prev_collection = get_previous_collection_name(cur_collection_name)
+        prev_collection = get_previous_collection_name_by_name(cur_collection_name)
 
         # 递归创建前一个Collection，如果前一个Collection已经创建直接返回True
         create_previous_collection_result = create_previous_collection(collections, prev_collection)
 
-        # 如果前一个一个Collection已经创建成功才创建下一个一个Collection
+        # 如果前一个一个Collection已经创建成功才创建下一个Collection
         if create_previous_collection_result:
 
             # 执行创建Collection
@@ -346,139 +548,220 @@ def create_previous_collection(collections, cur_collection_name):
         return True
 
 
-# 从指定的时间开始创建Collection
-# 本来想用重载的，但是但是Python不支持重载
 def create_previous_collection_until_end_date(collections, cur_collection_name, start_date):
-    # 如果没有传开始创建的日期则默认从当前日期开始
+    """
+    从指定的时间开始创建Collection,一起创建到当前的Collection
+    本来想用重载的，但是但是Python不支持重载
+    参数说明：
+      collections     要创建的Collection列表
+      cur_collection_name 当前的Collection的名称
+      start_date      指定开始创建Collection的日期
+    相当于为程序指定一个开始和结束的Solr Collection，然后再指定这中间有哪些Solr Collection已经创建了，
+    然后把没有创建的Collection从前往后都创建一下
+    比如说start_date 为2017-09-01, cur_collection_name为yisou20180100,
+    collections为[yisou20171201,yisou20171202]
+    则创建从2017-09-01开始，除了yisou20171201,yisou20171202外，从yisou20170900到20180100的所有的Solr Collection
+    如果没有传开始创建的日期则默认从当前日期开始
+
+    :param collections: Solr Collection 列表
+    :param cur_collection_name: 当前Solr Collection名称
+    :param start_date: 开始日期,格式为2018-01-01
+    :return: Solr Collection是否创建成功
+    """
     if start_date is None:
         start_date = datetime.datetime.now()
+        logger.info(
+            "没有设置开始创建的日期，默认从当前日期开始创建，当时日期为: %s",
+            datetime.datetime.strftime(start_date, "%Y-%m-%d")
+        )
 
     # 获取当前日期的Collection的名称
-    collection_name_temp = get_collection_name_by_date(project_identify, start_date)
+    start_collection_name = get_collection_name_by_date(project_identify, start_date)
 
-    # 获取当前日期的Collection的前一个一个Collection
-    start_collection_name = get_previous_collection_name(collection_name_temp)
+    # 获取当前日期的Collection的前一个Collection
+    previous_start_collection_name = get_previous_collection_name_by_name(start_collection_name)
 
-    # 将前一个Collection添加到列表，则递归的时候到这个Collection就停了
-    collections.append(start_collection_name)
+    # 将前一个Collection添加到列表，
+    # 程序递归创建Solr Collection的时候需要一起截止标识，来判断到什么时候停止
+    collections.append(previous_start_collection_name)
 
     # 从下一个Collection递归创建Collection
     create_status = create_previous_collection(collections, cur_collection_name)
 
-    # 把当前日期的Collection的前一个Collection从列表中移除，后面还要根据这些Collection列表为它们创建别名
-    collections.remove(start_collection_name)
+    # 把当前日期的Collection的前一个Collection从列表中移除，这个Solr Collection
+    # 后面还要根据这些Collection列表为它们创建别名
+    collections.remove(previous_start_collection_name)
 
     return create_status
 
 
-# 创建Collection
 def create_collection(collection_name):
+    """
+    创建Collection
+    :param collection_name: Solr Collection名称
+    :return: Solr Collection是否创建成功
+    """
     # 替换创建模板
-    create_collection_url = create_collection_url_template.replace("${host_name}", host_name)
-    create_collection_url = create_collection_url.replace("${solr_port}", solr_port.__str__())
-    create_collection_url = create_collection_url.replace("${numShards}", numShards.__str__())
-    create_collection_url = create_collection_url.replace("${replicationFactor}", replicationFactor.__str__())
-    create_collection_url = create_collection_url.replace("${maxShardsPerNode}", maxShardsPerNode.__str__())
-    create_collection_url = create_collection_url.replace("${collection_name}", collection_name)
-    create_collection_url = create_collection_url.replace("${collection_conf}", project_identify)
+    create_collection_url = create_collection_url_template.format(
+        host_name=host_name,
+        solr_port=solr_port.__str__(),
+        numShards=numShards.__str__(),
+        replicationFactor=replicationFactor.__str__(),
+        maxShardsPerNode=maxShardsPerNode.__str__(),
+        collection_name=collection_name,
+        collection_conf=project_identify
+    )
 
-    format_print("创建Collection: " + collection_name + " ...")
+    logger.info("开始创建Collection: %s ... ", collection_name)
 
     # 开始创建Collection
     response = exec_http_request(create_collection_url)
     # response = json.loads(data_create_collection_success)
 
+    # 获取此Collection要存储的数据的时间段
+    start_end = get_period_by_collection_name(collection_name)
+
     # 判断是否创建成功
     if "success" in str(response):
-        # 获取此Collection要存储的数据的时间段
-        start_end = get_period_by_collection_name(collection_name)
-
-        format_print("已为 " + start_end[0] + " 到 " + start_end[1] + " 期间创建Collection: " + collection_name)
-        format_print("")
-
+        logger.info("已为 %s 到 %s 期间的数据创建Solr Collection: %s", start_end[0], start_end[1], collection_name)
         return True
     else:
+        logger.info("创建 %s 到 %s 期间的Solr Collection : %s 失败", start_end[0], start_end[1], collection_name)
         return False
 
 
-# 删除Collection
 def delete_collections(collections):
-    # 删除请求模板替换主机名和端口号
-    delete_collection_url_temp = delete_collection_url_template.replace("${host_name}", host_name)
-    delete_collection_url_temp = delete_collection_url_temp.replace("${solr_port}", solr_port.__str__())
-
+    """
+    删除Collection
+    :param collections: Solr Collection列表
+    :return: 不返回
+    """
     # 如果Solr集群中根本没有没有Collection直接返回
     if collections.__len__() == 0:
-        format_print("没有需要删除的Collection")
+        logger.info("没有需要删除的Collection")
         return
 
     # 循环删除列表里的Collection
     for collection in collections:
 
         # 替换要删除的Collection
-        delete_collection_url = delete_collection_url_temp.replace("${collection}", collection)
+        delete_collection_url = delete_collection_url_template.format(
+            host_name=host_name,
+            solr_port=solr_port.__str__(),
+            collection=collection
+        )
 
         # 执行删除
-        format_print("即将删除Collection：" + collection.__str__())
+        logger.info("即将删除Collection： %s", collection.__str__())
         response = exec_http_request(delete_collection_url)
 
         # 判断是否删除成功，这个删除成功了才能删除下一个
         if "success" in str(response):
-            format_print("Collection删除成功：" + collection.__str__())
+            logger.info("Collection删除成功： %s", collection.__str__())
 
-        # format_print("response = " + str(response))
+        # logger.info("response = " + str(response))
 
 
-# 删除所有Collection
+def delete_collections_by_start_end_day(start_date, end_date):
+    """
+    根据开始日期和结束日期删除指定时间段之间的所有Solr Collection
+    如果中间有时间段不完整的Solr Collection,不完整的Solr Collection不删除
+    例如,指定时间段为2017-12-05到2017-01-05,
+    那么会删除
+    2017-12-11到2017-12-20的Solr Collection: yisou20171201
+    2017-12-21到2017-12-31的Solr Collection: yisou20171202
+    而不会删除的是:
+    2017-12-05到2017-12-10的Solr Collection: yisou20171200,因为它还包含2017-12-01到2017-12-04的数据
+    2018-01-01到2017-01-05的Solr Collection: yisou20180100,因为它还包含2018-01-06到2018-01-10的数据
+
+    :param start_date: 开始日期,格式为2018-01-01
+    :param end_date: 结束日期,格式为2018-01-01
+    :return:
+    """
+    # 指定日期所有的Solr Collection的名称
+    start_end_collections = get_collections_by_start_end_date(start_date, end_date)
+    # Solr 已经创建的所有的Collection名称
+    all_solr_collections = get_all_collection()
+
+    # 判断指定日期内的Collection是否包含在Solr已经创建的所有的Collection,如果没有的话剔除
+    for collection_name in start_end_collections:
+        if not all_solr_collections.__contains__(collection_name):
+            start_end_collections.remove(collection_name)
+
+    # 删除指定时间段内的所有Collection
+    delete_collections(start_end_collections)
+
+
 def delete_all_collections():
+    """
+    删除所有Collection
+    :return: 不返回
+    """
     collections = get_all_collection()
     delete_collections(collections)
 
 
-# 为多个多个Collection创建别名
 def create_alias(alias_name, collections):
+    """
+    为指定的Solr Collection列表Collection创建别名
+
+    :param alias_name: Solr Collection别名
+    :param collections: Solr Collection列表
+    :return: 是否创建Solr另外成功
+    """
     # 替换请求模板参数
-    create_alias_url = create_alias_url_template.replace("${host_name}", host_name)
-    create_alias_url = create_alias_url.replace("${solr_port}", solr_port.__str__())
-    create_alias_url = create_alias_url.replace("${all_collection}", ",".join(collections))
+    create_alias_url = create_alias_url_template.format(
+        host_name=host_name,
+        solr_port=solr_port.__str__(),
+        all_collection=','.join(collections),
+        collection_name=alias_name
+    )
 
     # 执行创建
-    format_print("为Solr所有Collection创建别名:" + alias_name)
+    logger.info("为Solr所有Collection创建别名: %s", alias_name)
     response = exec_http_request(create_alias_url)
     # response = json.loads(data_create_collection_success)
 
     # 判断是否删除成功
     if int(response["responseHeader"]["status"]) == 0:
-        format_print("为Solr所有Collection创建别名成功")
+        logger.info("为Solr所有Collection创建别名成功")
         return True
     else:
-        format_print("为Solr所有Collection创建别名成功")
+        logger.info("为Solr所有Collection创建别名失败")
         return False
 
 
-# 初始化参数
 def init(hostname, port, shards, replicas):
+    """
+    初始化参数
+    :param hostname: 主机名或IP地址
+    :param port: Solr服务的端口号
+    :param shards: Solr分片数
+    :param replicas: Solr分片副本数
+    :return: 不返回
+    """
     # 指定全局变量
     global host_name, solr_port, numShards, replicationFactor, maxShardsPerNode
 
     # 主机名
     host_name = hostname
-
     # 端口号
     solr_port = port
-
     # 分片数
     numShards = shards
-
     # 副本数
     replicationFactor = replicas
-
     # 单个节点最大分片数
     maxShardsPerNode = replicas
 
 
-# 主程序
 def main(args):
+    """
+    主程序
+    :param args: 命令行传的参数列表,用于指定开始创建Solr Collection的日期,格式为2018-01-01
+    :return: 不返回
+    """
+    """ 主程序 """
     # 如果没有传日期的参数就以系统当前的日期为准
     if args.__len__() > 1:
         cur_date = datetime.datetime.strptime(args[1], '%Y-%m-%d')
@@ -490,8 +773,8 @@ def main(args):
     # 根据当前时间段的Collection的名称取得下一个时间段的Collection名称
     forward_collection_name = get_forward_collection_name(cur_collection_name)
 
-    format_print("当前时间段的Collection名称: " + cur_collection_name)
-    format_print("下一时间段的Collection名称: " + forward_collection_name)
+    logger.info("当前时间段的Collection名称: %s", cur_collection_name)
+    logger.info("下一时间段的Collection名称: %s", forward_collection_name)
 
     # 获取Solr集群中所有的Collection
     collections = get_all_collection()
@@ -501,7 +784,7 @@ def main(args):
     if collections.__len__() > 0:
         # 判断下一Collection是否已经创建，如果已经创建，直接返回，如果没有创建，先判断前面的Collection是否已经创建
         if forward_collection_name in collections:
-            format_print("当时时间段及下一时间段的Collection都已经创建，不需要再创建")
+            logger.info("当时时间段及下一时间段的Collection都已经创建，不需要再创建")
         else:
             # 如果Solr里已经有Collection，判断前面的Collection是否已经创建, 并创建当前时间段和下一时间段的Collection
             create_collection_result = create_previous_collection(collections, forward_collection_name)
@@ -515,8 +798,8 @@ def main(args):
         create_alias(project_identify + "-all", collections)
 
 
-""" 程序入口 """
 if __name__ == "__main__":
+    """ 程序入口 """
     # 初始化参数
     # 第一个参数：Solr集群中任意一台服务器的主机名或IP地址
     # 第二个参数：该服务器中Solr服务对应的商品号
@@ -525,9 +808,15 @@ if __name__ == "__main__":
     init("http://cm02.spark.com", 8080, 3, 1)
     # init("http://data2.hadoop.com", 8080, 2, 2)
 
-    # 定时创建Collection和所有Collection的别名的主程序
-    # main(["create_solr_collection.py", "2018-02-23"])
+    # 定时创建Solr Collection主程序
+    # sys.argv用于指定从指定的日期开始创建Solr Collection,一直创建到当前时间
+    # 一般不用指定
+    # main(sys.argv)
 
-    main(sys.argv)
+    # 删除所有的Solr Collection
     # delete_all_collections()
+    delete_collections_by_start_end_day("2017-12-14", "2018-01-20")
+    # 创建Solr Collection别名
+    # create_alias(project_identify + "-all", ["yisou20171200", "yisou20171201", "yisou20171202"])
+    # 创建指定的Solr Collection
     # create_collection(project_identify + "20170900")

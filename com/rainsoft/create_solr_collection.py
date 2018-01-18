@@ -13,12 +13,28 @@ import logging
 
 # 脚本使用说明
 # 程序的入口在脚本的最下面(__main__)
+# 程序执行的方法主要是：main(sys.argv), 其他的方法(Collection的创建、删除；别名的创建、删除),
+# 根据情况可以把main(sys.arvg)注释掉,并把需要的方法打开
 # 程序执行之前需要先初始化参数
 # 初次使用需要根据集群情况给程序传参，参数如下：
 # host_name: 可以是Solr集群中的任意一台服务器的主机名或者IP地址
 # solr_port: 此服务器Solr的端口号
 # numShards: Solr集群节点数（Solr部署了多少台服务器就是多少）
 # replicationFactor: 副本数，数据量不大可以指定副本数为1，数据量大的话指定为2
+
+# 部署说明:
+# 第一步：
+#   将脚本放在/solrCloud/目录下
+# 第二步：
+#   根据上面的说明先初始化参数,并把其他的方法注释掉,把main(sys.argv)方法打开
+# 第三步：
+#   crontab 添加下面的定时任务：
+# * 3 * * * python /solrCloud/create_solr_collection.py
+# @reboot python /solrCloud/create_solr_collection.py
+
+# 定时任务说明:
+#   定时执行此任务每天的凌晨3点执行一次
+#   服务器重启执行一次
 
 # 创建Collection的规则
 # 脚本的功能为Solr每个月10天创建一个Collection
@@ -30,13 +46,6 @@ import logging
 # 2017年12月30日31日，就两天，也把它算到第3个10天，命令为yisou20171203
 
 # 指定时间段的Collection创建完成后会再创建一个虚拟的Collection（yisou）:这个Collection指向所有的Collection
-
-# 执行定时任务
-# 定时执行此任务每天的凌晨3点执行一次
-# 服务器重启执行一次
-# crontab 定时执行命令：
-# * 3 * * * python create_solr_collection.py
-# @reboot python create_solr_collection.py
 
 # 全局变量
 # 如果需要修改全局变量的值的话，不要在这里改，下面有程序初始化方法，
@@ -53,9 +62,11 @@ formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
 # 指定日志时间戳打印格式
 formatter.datefmt = '%Y-%m-%d %H:%M:%S'
 
+# 脚本所在根路径
+root_dir = os.path.split(os.path.realpath(__file__))[0]
 # 日志文件路径
 log_file = '{root_dir}{path_separator}logs{path_separator}create_solr_collection.log'.format(
-    root_dir=os.getcwd(),
+    root_dir=root_dir,
     path_separator=os.sep
 )
 
@@ -91,14 +102,18 @@ replicationFactor = 1
 # 一个节点最多多少个分片
 maxShardsPerNode = 1
 # Collection归属
-project_identify = "yisou"
+project_identify = "ending"
+# solr conf dir
+solr_conf_dir = "yisou"
+# solr collection alias for all
+collection_alias_all = "yisou-all"
 
 # 获取Solr所有Collection的HTTP请求模板
 get_all_collection_url_template = """ {host_name}:{solr_port}/solr/admin/collections?action=LIST&wt=json """
 # 生成Solr Collection的HTTP请求模板
 create_collection_url_template = """{host_name}:{solr_port}/solr/admin/collections?action=CREATE&name={\
 collection_name}&numShards={numShards}&replicationFactor={replicationFactor}&maxShardsPerNode={\
-maxShardsPerNode}&collection.configName={collection_conf}&wt=json """
+maxShardsPerNode}&collection.configName={solr_conf_dir}&wt=json """
 
 # 为所有Collection创建别名的模板
 create_alias_url_template = """{host_name}:{solr_port}/solr/admin/collections?action=CREATEALIAS&name=\
@@ -107,6 +122,7 @@ create_alias_url_template = """{host_name}:{solr_port}/solr/admin/collections?ac
 # 删除Solr里Collection的别名
 delete_alias_url_template = """ {host_name}:{solr_port}/solr/admin/collections?action=\
 DELETEALIAS&name={alias_name}&wt=json"""
+
 # 测试，创建Collection成功的返回结果
 data_create_collection_success = """
 {"responseHeader":{"status":0,"QTime":6400},"success":\
@@ -219,7 +235,7 @@ def get_collection_name_by_date(key, cur_date):
 
     # Collection的名称由项目标识+年+月+时间段标识
     collection_name = key + cur_year + cur_month + identify
-    logger.info("日期: %s 所在的Collection: %s", cur_date.strftime("%Y-%m-%d"), collection_name)
+    logger.info("%s 所在的Collection: %s", cur_date.strftime("%Y-%m-%d"), collection_name)
 
     return collection_name
 
@@ -260,7 +276,7 @@ def get_previous_collection_by_name(collection_name):
     # 得到前一个Collection的名称
     previous_collection_name = collection_name[:-8:1] + cur_year + cur_month + str(identify)
 
-    logger.info("%s的前一Collection名称: %s", collection_name, previous_collection_name)
+    logger.debug("%s的前一Collection名称: %s", collection_name, previous_collection_name)
 
     return previous_collection_name
 
@@ -298,7 +314,7 @@ def get_period_by_date(cur_date):
     # Collection的结束时间
     end_date_str = datetime.datetime.strftime(end_date, "%Y-%m-%d")
 
-    logger.info("当前的日期为: %s ,所在的时间段为：%s 到 %s", cur_date, start_date_str, end_date_str)
+    logger.debug("当前的日期为: %s ,所在的时间段为：%s 到 %s", cur_date, start_date_str, end_date_str)
 
     return [start_date_str, end_date_str]
 
@@ -322,7 +338,7 @@ def get_period_by_collection_name(collection_name):
     date_period = datetime.datetime.strptime(date_identify, "%Y%m%d")
     start_end_period = get_period_by_date(date_period)
 
-    logger.info(
+    logger.debug(
         "%s 的Solr Collection存储的数据所在的时间段为: %s 到 %s",
         collection_name, start_end_period[0], start_end_period[1]
     )
@@ -384,7 +400,7 @@ def get_forward_collection_name(collection_name):
 
     # 生成下一个一个Collection的名称
     forward_collection_name = collection_name[:-8:1] + cur_year + cur_month + identify
-    logger.info("%s 的下一时间段的Collection名称为: %s ", collection_name, forward_collection_name)
+    logger.debug("%s 的下一时间段的Collection为: %s ", collection_name, forward_collection_name)
 
     return forward_collection_name
 
@@ -432,8 +448,7 @@ def get_all_collection():
     col_utf8 = []
     for col in collections:
         collection_name = col.encode("utf-8")
-        if project_identify in collection_name:
-            col_utf8.append(collection_name)
+        col_utf8.append(collection_name)
     logger.info("获取成功, Solr已创建的所有Collection为: %s", col_utf8.__str__())
 
     return col_utf8
@@ -612,7 +627,7 @@ def create_collection(collection_name):
         replicationFactor=replicationFactor.__str__(),
         maxShardsPerNode=maxShardsPerNode.__str__(),
         collection_name=collection_name,
-        collection_conf=project_identify
+        solr_conf_dir=solr_conf_dir
     )
 
     logger.info("开始创建Collection: %s ... ", collection_name)
@@ -629,7 +644,7 @@ def create_collection(collection_name):
         logger.info("已为 %s 到 %s 期间的数据创建Solr Collection: %s", start_end[0], start_end[1], collection_name)
         return True
     else:
-        logger.info("创建 %s 到 %s 期间的Solr Collection : %s 失败", start_end[0], start_end[1], collection_name)
+        logger.error("创建 %s 到 %s 期间的Solr Collection : %s 失败", start_end[0], start_end[1], collection_name)
         return False
 
 
@@ -722,18 +737,42 @@ def create_alias(alias_name, collections):
         collection_name=alias_name
     )
 
-    # 执行创建
-    logger.info("为Solr所有Collection创建别名: %s", alias_name)
+    # 先执行删除Solr Collection 别名
+    delete_alias(alias_name)
+
+    # 为Solr指定的Collection 列表创建别名
+    logger.info("为Solr指定的Collection创建别名: %s", alias_name)
+    logger.info("%s 所指向的Collections: %s", alias_name, collections.__str__())
     response = exec_http_request(create_alias_url)
     # response = json.loads(data_create_collection_success)
 
     # 判断是否删除成功
     if int(response["responseHeader"]["status"]) == 0:
-        logger.info("为Solr所有Collection创建别名成功")
+        logger.info("为Solr Collections创建别名成功")
         return True
     else:
-        logger.info("为Solr所有Collection创建别名失败")
+        logger.error("创建别名失败")
         return False
+
+
+def create_alias_for_all(alias_name):
+    collections = get_all_collection()
+    create_alias(alias_name, collections)
+
+
+def delete_alias(alias_name):
+    # 替换请求模板参数
+    delete_alias_url = delete_alias_url_template.format(
+        host_name=host_name,
+        solr_port=solr_port.__str__(),
+        alias_name=alias_name
+    )
+
+    # 执行删除
+    logger.info("即将删除Solr Collection 别名: %s", alias_name)
+    response = exec_http_request(delete_alias_url)
+
+    logger.info(response)
 
 
 def init(hostname, port, shards, replicas):
@@ -816,17 +855,15 @@ if __name__ == "__main__":
     # 定时创建Solr Collection主程序
     # sys.argv用于指定从指定的日期开始创建Solr Collection,一直创建到当前时间
     # 一般不用指定
-    main(sys.argv)
+    # main(sys.argv)
 
+    # create_alias_for_all("yisou-all")
     # 删除所有的Solr Collection
     # delete_all_collections()
 
     # 删除从指定的开始结束日期之间的Solr Collection,如果指定的开始或结束日期
     # 不包含完整的Solr Collection,不完整的Solr Collection不删除
-    # delete_collections_by_start_end_day("2017-12-14", "2018-01-20")
+    # delete_collections_by_start_end_day("2018-01-14", "2018-02-20")
 
     # 创建Solr Collection别名
-    # create_alias(project_identify + "-all", ["yisou20171200", "yisou20171201", "yisou20171202"])
-
-    # 创建指定的Solr Collection
-    # create_collection(project_identify + "20170900")
+    # create_alias(collection_alias_all, ["yisou20171200", "yisou20171201", "yisou20171202"])

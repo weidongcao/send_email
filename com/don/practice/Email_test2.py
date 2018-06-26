@@ -32,6 +32,6 @@ try:
     smtpObj.login(mail_user, mail_pass)
     smtpObj.sendmail(sender, receivers, message.as_string())
     smtpObj.close()
-    print "邮件发送成功"
+    print ("邮件发送成功")
 except smtplib.SMTPException as e:
-    print "Error: 无法发送邮件"
+    print ("Error: 无法发送邮件")

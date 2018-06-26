@@ -45,7 +45,7 @@ import logging
 # 2017年12月23日在2017年12月的第3个10天，此Collection命名为yisou20171202
 # 2017年12月30日31日，就两天，也把它算到第3个10天，命令为yisou20171203
 
-# 指定时间段的Collection创建完成后会再创建一个虚拟的Collection（yisou）:这个Collection指向所有的Collection
+# 指定时间段的Collection创建完成后会再创建一个虚拟的Collection别名（xxx-all）:这个Collection指向所有的Collection
 
 # 全局变量
 # 如果需要修改全局变量的值的话，不要在这里改，下面有程序初始化方法，
@@ -74,19 +74,13 @@ log_file = '{root_dir}{path_separator}logs{path_separator}create_solr_collection
 if os.path.exists(os.path.dirname(log_file)) is False:
     os.makedirs(os.path.dirname(log_file))
 
-# 文件日志
 file_handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=256 * 1024 * 1024, backupCount=16)
-# 指定输出到文件的日志的格式
 file_handler.setFormatter(formatter)
 
-# 控制台日志
 console_handler = logging.StreamHandler(sys.stdout)
-# 指定输出到控制台的日志格式
 console_handler.setFormatter(formatter)
 
-# 删除所有的handler
 logging.getLogger().handlers = []
-# 为logger添加的日志处理器
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 logger.setLevel(logging.INFO)
@@ -138,7 +132,6 @@ delete_collection_url_template = """
 """
 
 
-# 执行执行Linux命令
 def exec_cmd(full_command, cwd_path):
     """
     函数功能说明：Python执行Shell命令并返回命令执行结果的状态、输出、错误信息、pid
@@ -167,10 +160,8 @@ def exec_cmd(full_command, cwd_path):
         # 等命令行运行完
         process.wait()
 
-        # 获取命令行输出
         stdout = process.stdout.read()
 
-        # 获取命令行异常
         stderr = process.stderr.read()
         # print("stderr = " + str(stderr))
 
@@ -217,11 +208,8 @@ def get_collection_name_by_date(key, cur_date):
     :param cur_date: 当前时间格式为2018-01-01
     :return: Solr Collection 名称
     """
-    # 获取年份
     cur_year = cur_date.strftime("%Y")
-    # 获取月份
     cur_month = cur_date.strftime("%m")
-    # 获取日
     cur_day = cur_date.strftime("%d")
 
     # 如果日期大于等于30号不再单独创建Collection
@@ -254,7 +242,6 @@ def get_previous_collection_by_name(collection_name):
     # 获取年份
     cur_year = collection_name[-8:-4:1]
 
-    # 如果日标识为00则上一个一个Collection是上一个月的
     if str(identify) == "00":
         identify = "02"
         # 如果月份是01，则上一个一个Collection的月份标识是上一年的
@@ -288,7 +275,6 @@ def get_period_by_date(cur_date):
     :param cur_date: 当时日期，格式为2018-01-01
     :return: 时间段[开始日期, 结束日期]
     """
-    # 获取到日期的日(一个月的第几天)
     cur_day = cur_date.day
 
     # 一个月的第一天
@@ -448,12 +434,18 @@ def get_all_collection():
     col_utf8 = []
     for col in collections:
         collection_name = col.encode("utf-8")
-        # 过滤非project_identify标识的Collection
-        if project_identify in collection_name:
-            col_utf8.append(collection_name)
+        col_utf8.append(collection_name)
     logger.info("获取成功, Solr已创建的所有Collection为: %s", col_utf8.__str__())
 
     return col_utf8
+
+
+def get_collections_by_identify(collection_all, identify):
+    collection_identify = []
+    for col in collection_all:
+        if identify in col:
+            collection_identify.append(col)
+    return collection_identify
 
 
 def get_collection_start_date(collection_name):
@@ -756,8 +748,11 @@ def create_alias(alias_name, collections):
         return False
 
 
-def create_alias_for_all(alias_name):
+def create_alias_for_all(alias_name, identify):
     collections = get_all_collection()
+    if identify is not None:
+        collections = get_collections_by_identify(collections, identify)
+
     create_alias(alias_name, collections)
 
 
@@ -825,7 +820,8 @@ def main(args):
     cur_collection_name = get_collection_name_by_date(project_identify, cur_date)
 
     # 获取Solr集群中所有的Collection
-    collections = get_all_collection()
+    collections_all = get_all_collection()
+    collections = get_collections_by_identify(collections_all, project_identify)
 
     # 如果传传日期的参数从所传日期开始创建Collection
     if args.__len__() > 1:
@@ -850,9 +846,10 @@ def main(args):
         create_collection_result = create_previous_collection_until_end_date(collections, forward_collection_name, None)
 
     # 为所有Collection创建别名
+    # if True:
     if create_collection_result:
         # 为所有的Collection创建别名
-        create_alias(project_identify + "-all", collections)
+        create_alias(project_identify + "-all", collections_all)
 
 
 if __name__ == "__main__":
@@ -862,14 +859,14 @@ if __name__ == "__main__":
     # 第二个参数：该服务器中Solr服务对应的商品号
     # 第三个参数：Solr集群中的节点数
     # 第四个参数：Solr副本数(数据量小为1，数据量大为2)
-    init("http://cm02.spark.com", 8983, 3, 2)
+    init("http://data2.hadoop.com", 8983, 2, 2)
 
     # 定时创建Solr Collection主程序
     # sys.argv用于指定从指定的日期开始创建Solr Collection,一直创建到当前时间
     main(sys.argv)
 
     # 为所有Solr Collection创建别名
-    # create_alias_for_all(collection_alias_all)
+    # create_alias_for_all(collection_alias_all, None)
     # 删除指定的Solr Collection别名
     # delete_alias(collection_alias_all)
     # 删除所有的Solr Collection
@@ -877,8 +874,8 @@ if __name__ == "__main__":
 
     # 删除从指定的开始结束日期之间的Solr Collection,如果指定的开始或结束日期
     # 不包含完整的Solr Collection,不完整的Solr Collection不删除
-    # delete_collections_by_start_end_day("2017-06-10", "2017-10-01")
+    # delete_collections_by_start_end_day("2018-06-25", "2018-10-01")
 
     # 创建Solr Collection
-    # create_collection(project_identify + "20180100")
+    # create_collection(project_identify + "20180601")
 

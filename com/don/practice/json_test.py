@@ -3,6 +3,7 @@
 import json
 import os
 
+
 def load_data(json_file):
     data_file = json_file
     if os.path.isfile(data_file):
@@ -14,16 +15,18 @@ def load_data(json_file):
                 return False
     else:
         open(data_file, 'w')
-        print '载入历史数据'
+        print('载入历史数据')
+
 
 def save_data(json_file, queue_data):
     data_file = json_file
     with open(data_file, 'w') as f:
         f.write(json.dumps(queue_data))
-    print '保存数据'
+    print('保存数据')
+
 
 if __name__ == "__main__":
-    poor = load_data("D:\\bigdata\\workspace\\PycharmProjects\\python\\com\\don\\formal\\resource\\application_content.json")
+    poor = load_data("com\\don\\formal\\resource\\application_content.json")
 
     print("poor['mainbase']['database'] = " + poor['mainbase']['database'])
 

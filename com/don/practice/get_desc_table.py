@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # coding=utf-8
 
-import time, sys, datetime, re, MySQLdb, subprocess, shlex
+import time, sys, datetime, re, PyMySQL, subprocess, shlex
 
 
 def get_tables(file):
@@ -19,8 +19,8 @@ def get_hive_table(sql):
     child.wait()
     print("--------------------")
     stdout, stderr = child.communicate()
-    print 'stdout : ', stdout
-    print 'stderr : ', stderr
+    print ('stdout : '), stdout
+    print ('stderr : '), stderr
 
     print("parent process")
 

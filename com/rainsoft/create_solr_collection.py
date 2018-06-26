@@ -862,10 +862,10 @@ if __name__ == "__main__":
 
     # 定时创建Solr Collection主程序
     # sys.argv用于指定从指定的日期开始创建Solr Collection,一直创建到当前时间
-    # main(sys.argv)
+    main(sys.argv)
 
     # 为所有Solr Collection创建别名
-    create_alias_for_all(collection_alias_all, None)
+    # create_alias_for_all(collection_alias_all, None)
     # 删除指定的Solr Collection别名
     # delete_alias(collection_alias_all)
     # 删除所有的Solr Collection

@@ -734,7 +734,6 @@ def create_alias(alias_name, collections):
     delete_alias(alias_name)
 
     # 为Solr指定的Collection 列表创建别名
-    logger.info("为Solr指定的Collection创建别名: %s", alias_name)
     logger.info("%s 所指向的Collections: %s", alias_name, collections.__str__())
     response = exec_http_request(create_alias_url)
     # response = json.loads(data_create_collection_success)
@@ -765,10 +764,10 @@ def delete_alias(alias_name):
     )
 
     # 执行删除
-    logger.info("即将删除Solr Collection 别名: %s", alias_name)
     req = urllib2.Request(delete_alias_url)
     try:
         response = urllib2.urlopen(req).read()
+        logger.info("删除Solr Collection 别名: %s 成功", alias_name)
         ss = response.encode('utf-8')
         return json.loads(ss)
     except Exception, e:
@@ -863,10 +862,10 @@ if __name__ == "__main__":
 
     # 定时创建Solr Collection主程序
     # sys.argv用于指定从指定的日期开始创建Solr Collection,一直创建到当前时间
-    main(sys.argv)
+    # main(sys.argv)
 
     # 为所有Solr Collection创建别名
-    # create_alias_for_all(collection_alias_all, None)
+    create_alias_for_all(collection_alias_all, None)
     # 删除指定的Solr Collection别名
     # delete_alias(collection_alias_all)
     # 删除所有的Solr Collection

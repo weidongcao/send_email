@@ -1,9 +1,9 @@
 #!/usr/bin/python
 # -*- coding: utf8 -*-
 
-import time, sys, os, datetime, re, MySQLdb
+import PyMySQL
 
-conn = MySQLdb.connect(host='54.223.85.243',
+conn = PyMySQL.connect(host='54.223.85.243',
                        user='dc',
                        passwd='mCdlUmm3thna5ttup',
                        db='datacenter')
@@ -15,6 +15,6 @@ cursor.execute("select ds, starttime, endtime, runtime, status from run_info whe
 
 rows = cursor.fetchall()
 for row in rows:
-   print(row[0] + "\t\t" + row[1] + "\t\t" + row[2] + "\t\t" + str(row[3]) + "\t\t" + row[4])
+    print(row[0] + "\t\t" + row[1] + "\t\t" + row[2] + "\t\t" + str(row[3]) + "\t\t" + row[4])
 cursor.close()
 conn.close()

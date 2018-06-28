@@ -1,54 +1,57 @@
 #!/usr/bin/python
 # coding=utf-8
 
-import time, sys, os, datetime, re, threading
+import datetime
+import os
+import threading
+import time
 
 
 # get script file list
 def file_list(directory):
-    ## get file list
+    # get file list
     files = os.listdir(directory)
 
     filelist = []
     for file in files:
         if ((os.path.isfile(directory + '/' + file) is True) and (file.endswith('.sql') == True)):
-            ## add file
+            # add file
             print('file = ' + file)
             filelist.append(file)
     return filelist;
 
 
-## replace ds date time
+# replace ds date time
 def replace_ds(file, p0):
-    ## 打开文件
+    # 打开文件
     content = open(file, 'r+')
-    ## 读出所有行
+    # 读出所有行
     all_lines = content.readlines()
-    ## 使用哪个数据库
-    ## use_database = "use leesdata;"
+    # 使用哪个数据库
+    # use_database = "use leesdata;"
     use_database = "use leesdata;"
 
-    ## 相当于把游标重置为0
+    # 相当于把游标重置为0
     content.seek(0)
-    ## 把content清空
+    # 把content清空
     content.truncate()
-    ## 使用哪个数据库写入文件
+    # 使用哪个数据库写入文件
     content.write(use_database)
-    ## 换行
+    # 换行
     content.write('\n')
 
     for line in all_lines:
 
-        ## 将日期常量替换成变量
-        ## line = replaceDate1(line, p0)
+        # 将日期常量替换成变量
+        # line = replaceDate1(line, p0)
 
-        ## 日期变量替换为常量
+        # 日期变量替换为常量
         line = replace_date_2(line, p0)
 
-        ## 老的日期常量替换为新的日期常量
-        ## line = replaceDate3(line, old_p0, new_p0)
+        # 老的日期常量替换为新的日期常量
+        # line = replaceDate3(line, old_p0, new_p0)
 
-        ## 如果原文件中包含了使用哪个数据库，不写入文件
+        # 如果原文件中包含了使用哪个数据库，不写入文件
         if ((line == (use_database + '\n'))
             or (line == (use_database + '\r\n'))):
             print('if > ' + line)
@@ -63,14 +66,14 @@ def replace_ds(file, p0):
     content.close()
 
 
-## 日期常量替换成变量
+# 日期常量替换成变量
 def replace_date_1(line, p0):
     p2 = get_date(p0, -1)
     p3 = get_date(p0, -5)
 
-    ## 制表符替换为空格
+    # 制表符替换为空格
     line = line.replace('\t', ' ')
-    ## 双引号替换为单引号
+    # 双引号替换为单引号
     line = line.replace('"', '\'')
 
     line = line.replace(p0, '{p0}')
@@ -79,14 +82,14 @@ def replace_date_1(line, p0):
     return line
 
 
-##日期变量替换为常量
+#日期变量替换为常量
 def replace_date_2(line, p0):
     p2 = get_date(p0, -1)
     p3 = get_date(p0, -5)
 
-    ## 制表符替换为空格
+    # 制表符替换为空格
     line = line.replace('\t', ' ')
-    ## 双引号替换为单引号
+    # 双引号替换为单引号
     line = line.replace('"', '\'')
 
     line = line.replace('{p0}', p0)
@@ -95,14 +98,14 @@ def replace_date_2(line, p0):
     return line
 
 
-## 老的日期常量替换为新的日期常量
+# 老的日期常量替换为新的日期常量
 def replace_date_3(line, old_p0, new_p0):
     old_p2 = get_date(old_p0, -1)
     old_p3 = get_date(old_p0, -5)
 
-    ## 制表符替换为空格
+    # 制表符替换为空格
     line = line.replace('\t', ' ')
-    ## 双引号替换为单引号
+    # 双引号替换为单引号
     line = line.replace('"', '\'')
 
     new_p2 = get_date(new_p0, -1)
@@ -114,15 +117,15 @@ def replace_date_3(line, old_p0, new_p0):
     return line
 
 
-##根据给定的日期返回偏移的天数
+#根据给定的日期返回偏移的天数
 def get_date(p0, offset):
-    ## string 转date
+    # string 转date
     date_p0 = datetime.datetime.strptime(p0, '%Y-%m-%d')
 
-    ## 日期偏移
+    # 日期偏移
     offset_date = date_p0 + datetime.timedelta(days=offset)
 
-    ## 返回string类型的偏移日期
+    # 返回string类型的偏移日期
     return offset_date.strftime('%Y-%m-%d')
 
 
@@ -145,7 +148,7 @@ def batch_run_hive(directory, p0):
         content = open(directory + '/' + file)
         all_lines = content.readlines()
         for line in all_lines:
-            ## 将变量替换成日期常量
+            # 将变量替换成日期常量
             line = replace_date_2(line, p0)
             sql += line
 
@@ -197,12 +200,12 @@ def test():
     return sql
 
 
-## main function
+# main function
 if __name__ == '__main__':
     # directory = "/data1/services/job_schedule/sql/daily-monitor"
-    ## directory = "/data1/services/job_schedule/sql/monitor-test"
+    # directory = "/data1/services/job_schedule/sql/monitor-test"
     directory = "D:\\bigdata\\resource\\TestData\\script2016122620"
-    ## path = "/data1/services/job_schedule/sql/monitor-test"
+    # path = "/data1/services/job_schedule/sql/monitor-test"
     p0 = '2016-12-15'
     days = 1
 
